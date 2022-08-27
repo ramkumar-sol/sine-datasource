@@ -1,12 +1,19 @@
 import { DataQuery, DataSourceJsonData } from '@grafana/data';
 
 export interface MyQuery extends DataQuery {
-  queryText?: string;
-  constant: number;
+  /**
+   * Offset for the sine wave
+   */
+  offset: number;
+  /**
+   * Frequency of the wave - cycles per minute
+   */
+  frequency: number;
 }
 
 export const defaultQuery: Partial<MyQuery> = {
-  constant: 6.5,
+  offset: 0,
+  frequency: 2,
 };
 
 /**

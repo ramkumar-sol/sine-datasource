@@ -1,39 +1,66 @@
 import defaults from 'lodash/defaults';
-
+import { Observable, merge } from 'rxjs';
 import {
   DataQueryRequest,
   DataQueryResponse,
   DataSourceApi,
   DataSourceInstanceSettings,
-  MutableDataFrame,
+  CircularDataFrame,
   FieldType,
+  LoadingState,
 } from '@grafana/data';
 
 import { MyQuery, MyDataSourceOptions, defaultQuery } from './types';
 
 export class DataSource extends DataSourceApi<MyQuery, MyDataSourceOptions> {
-  constructor(instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions>) {
+  constructor(
+    instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions>
+  ) {
     super(instanceSettings);
   }
 
-  async query(options: DataQueryRequest<MyQuery>): Promise<DataQueryResponse> {
-    const { range } = options;
-    const from = range!.from.valueOf();
-    const to = range!.to.valueOf();
+  query(options: DataQueryRequest<MyQuery>): Observable<DataQueryResponse> {
+    // const { range } = options;
+    // const from = range!.from.valueOf();
+    // const to = range!.to.valueOf();
 
     // Return a constant for each query.
-    const data = options.targets.map(target => {
+    const data = options.targets.map((target) => {
       const query = defaults(target, defaultQuery);
-      return new MutableDataFrame({
-        refId: query.refId,
-        fields: [
-          { name: 'Time', values: [from, to], type: FieldType.time },
-          { name: 'Value', values: [query.constant, query.constant], type: FieldType.number },
-        ],
+      return new Observable<DataQueryResponse>((subscriber) => {
+        const frame = new CircularDataFrame({
+          append: 'tail',
+          capacity: 10000,
+        });
+
+        frame.refId = query.refId;
+        frame.addField({ name: 'time', type: FieldType.time });
+        frame.addField({ name: 'value', type: FieldType.number });
+        frame.addField({ name: 'debug', type: FieldType.other });
+        let t = 0;
+        const intervalId = setInterval(() => {
+          frame.add({
+            time: Date.now(),
+            value:
+              Math.sin((2 * Math.PI * t++ * query.frequency) / 1000) +
+              query.offset,
+          });
+          subscriber.next({
+            data: [frame],
+            key: query.refId,
+            state: LoadingState.Streaming,
+          });
+        }, 100);
+
+        return () => {
+          console.log(`cleaning up query: ${query}`);
+          clearInterval(intervalId);
+        };
       });
     });
 
-    return { data };
+    return merge(...data);
+    // return { data };
   }
 
   async testDatasource() {
